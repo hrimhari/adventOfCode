@@ -45,9 +45,10 @@ isSsl() {
 	return 1
 }
 
+entry=1
 count=0
 while read ip; do
-	echo "${ip}:"
+	echo "${count}/${entry} ${ip}:"
 
 	supernets=($(echo "$ip" | sed -e "s/\[[^]]*\]/ /g"))
 	hypernets=($(echo "$ip" | sed -e "s/\(^\|\]\)[^][]*\(\[\|$\)/ /g"))
@@ -74,12 +75,14 @@ while read ip; do
 
 	echo "   babs: ${babs[@]}"
 
-	if isSsl "${expectedBabs[@]}" "${babs[@]}"; then
+	if isSsl "${expectedBabs[*]}" "${babs[*]}"; then
 		echo "   SSL"
 		let count++
 	else
 		echo "   Not SSL"
 	fi
+
+	let entry++
 done
 
 echo "$count"

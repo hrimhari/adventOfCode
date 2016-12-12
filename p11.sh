@@ -124,14 +124,16 @@ getPossibleMoves() {
 			shift
 			for b; do
 				if tryMove $floorNum $possibleFloor $a $b; then
-					printf "$nextStepCount $floorNum $possibleFloor $a $b\n"
+					#printf "$nextStepCount $floorNum $possibleFloor $a $b\n"
+					stackPossibleMoves $nextStepCount $floorNum $possibleFloor $a $b
 				else
 					printf "not possible: $nextStepCount $floorNum $possibleFloor $a $b\n" >&2
 					:
 				fi
 			done
 			if tryMove $floorNum $possibleFloor $a; then
-				printf "$nextStepCount $floorNum $possibleFloor $a\n"
+				#printf "$nextStepCount $floorNum $possibleFloor $a\n"
+				stackPossibleMoves $nextStepCount $floorNum $possibleFloor $a
 			else
 				printf "not possible: $nextStepCount $floorNum $possibleFloor $a\n" >&2
 				:
@@ -143,6 +145,7 @@ getPossibleMoves() {
 tryMove() {
 	local fromFloor=$1
 	local toFloor=$2
+	local direction=$((toFloor - fromFloor))
 	shift 2
 	local items=$*
 	local floorItems
@@ -156,7 +159,7 @@ tryMove() {
 
 	drop $toFloor $items
 	#declare -p floors
-	checkHistory && checkCombination $(getFloorItems $toFloor)
+	checkHistory $direction && checkCombination $(getFloorItems $toFloor)
 	toCheck=$?
 	take $toFloor $items
 	drop $fromFloor $items
@@ -192,10 +195,11 @@ checkUseless() {
 
 checkHistory() {
 	#local floorDump=$(dumpFloors)
-	local floorDump=$(getFloorCount)
+	local floorDump="$(getFloorCount)"
+	local direction=$1
 
 	#if fgrep -q "$floorDump" $steps $tryMoveStack; then
-	if fgrep -q "$floorDump" $tryMoveStack; then
+	if fgrep -q "$floorDump $direction" $tryMoveStack; then
 		echo "In history" >&2
 		return 1
 	fi
@@ -308,13 +312,22 @@ move() {
 		exit
 	fi
 
-	stackPossibleMoves
+	#stackPossibleMoves
+	getPossibleMoves
 }
 
 stackPossibleMoves() {
-	local possibleMoves=$(getPossibleMoves)
+	#local possibleMoves=$(getPossibleMoves)
+	local possibleMoves=$*
 	local floorDump="$(dumpFloors)"
+	
+	take $2 ${@:4}
+	drop $3 ${@:4}
 	local floorCount="$(getFloorCount)"
+	take $3 ${@:4}
+	drop $2 ${@:4}
+	local direction=$(($3 - $2))
+
 	local toStack
 	echo -e "Stacking:\n$possibleMoves\n"
 
@@ -323,7 +336,7 @@ stackPossibleMoves() {
 			echo "WARNING: empty move!" >&2
 			continue
 		fi
-		toStack="'$floorDump' $possibleMove '' $floorCount"
+		toStack="'$floorDump' $possibleMove '' $floorCount $direction"
 		echo "$toStack" >> $tryMoveStack
 	done <<<"$possibleMoves"
 }
@@ -361,7 +374,8 @@ getFloorCount() {
 
 > /tmp/p11.out
 print
-stackPossibleMoves
+#stackPossibleMoves
+getPossibleMoves
 count=0
 while [ $count -lt $(fgrep -c "" $tryMoveStack) ]; do
 	move
@@ -371,4 +385,4 @@ while [ $count -lt $(fgrep -c "" $tryMoveStack) ]; do
 	let count++
 done
 
-rm $tryMoveStack $steps
+#rm $tryMoveStack $steps

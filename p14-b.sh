@@ -19,7 +19,7 @@ killAll() {
 
 spawn() {
 	$* &
-	pids[]=$!
+	pids+=($!)
 }
 
 getKeys() {
@@ -64,23 +64,40 @@ checkCandidates() {
 	done
 }
 
+computeOneHash() {
+	local in=$1
+	echo -e "${in}\c" | md5sum | tr -d ' -'
+}
+
 computeHashes() {
 	local salt=$1
-	local i=0
+	local core=$2
+	local cores=$3
+	local i=$core
+	local stretch=0
+	local in
 
-	> $INPUT
 	while true; do
-		((i % 1000 == 0? 1 : 0)) && echo "$i hash(es)..." >&2
-		echo -e "${salt}${i}\c" | md5sum | tr -d ' -' >> $INPUT
-		let i++
+		((i % 1 == 0? 1 : 0)) && echo "$i hash(es) ($core of $cores)..." >&2
+		in=${salt}${i}
+		for ((stretch=0; stretch <= 2016; stretch++)) { 
+			in=$(computeOneHash $in)
+		}
+		echo $in >> $INPUT
+		let i+=$cores
 	done
 }
 
-computeHashes $1 &
+> $INPUT
+cores=10
+for ((core=0; core<$cores; core++)) {
+	spawn computeHashes $1 $core $cores
+}
+
 sleep 1
-extractCandidates &
+spawn extractCandidates
 sleep 1
-checkCandidates &
+spawn checkCandidates
 
 while [ $(wc -l < $HASHFILE) -lt 64 ]; do
 	sleep 10

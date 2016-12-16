@@ -7,10 +7,6 @@ TMP=$(tempfile -p p16a)
 TMP2=$(tempfile -p p16b)
 
 dragon() {
-	local to=""
-	local i
-	local c
-	
 	cp $TMP $TMP2
 	echo >> $TMP
 	echo -e "0\c" >> $TMP2
@@ -19,10 +15,6 @@ dragon() {
 }
 
 checksum() {
-	local from=$1
-	local i
-	local to
-
 	echo >> $TMP
 	sed -e "s/../&\n/g" < $TMP | sed -e "s/^\(00\|11\)$/1/g" -e "s/^\(01\|10\)$/0/g" | tr -d '\n' > $TMP2
 	cp $TMP2 $TMP
@@ -47,13 +39,13 @@ done
 
 echo
 echo "data(len=$(wc -c < $TMP))"
-cat $TMP
+#cat $TMP
 echo >> $TMP
 echo "Cutting to $length"
 cut -c1-$length < $TMP | tr -d '\n' > $TMP2
 cp $TMP2 $TMP
 echo "data(len=$(wc -c < $TMP))"
-cat $TMP
+#cat $TMP
 echo
 echo "checksum:"
 checksum $data

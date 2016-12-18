@@ -12,10 +12,8 @@ declare -a start=(1 1)
 declare -a end=(7 7)
 
 # Path stack
-# Structure:
-#   Key: step#
-#   Value: list of coords in form of "PATH1,x1,y1 PATH2,x2,y2 ...", where PATH is composed of a sequence of either U, L, D or R.
-declare -A pathStack=()
+#   Value: list of coords in form of "PATH1,x1,y1\nPATH2,x2,y2 ...", where PATH is composed of a sequence of either U, L, D or R.
+STACK=/tmp/p17-b.${magic}.stack
 
 # Directions
 declare -A directions=([U]=0 [D]=1 [L]=2 [R]=3)
@@ -33,6 +31,11 @@ computeDoors() {
 	local x=$1
 	local y=$2
 	local path=${3:1}
+
+	if [ ${#pathToDoors[$3]} -gt 0 ]; then
+		# Already computed
+		return 0
+	fi
 
 	pathToDoors[$3]="$(echo -e "${magic}${path}\c" | $MD5 | sed -e "s/[0-9]/0/g" -e "s/[a-f]/1/g" -e "s/./& /g" | cut -c1-8)"
 }
@@ -162,7 +165,7 @@ nextMove() {
 			continue
 		fi
 
-		attempted=$(echo " ${attemptedList}" | fgrep --color=always " ${path}${direction},")
+		attempted=$(grep --color=always "^${path}${direction}," $STACK)
 		if [ ${#attempted} -ne 0 ]; then
 			#echo "Attempted: ${path}${direction}: ${attempted}" >&2
 			echo "Attempted: ${path}${direction}" >&2
@@ -188,10 +191,10 @@ toStack() {
 	local coord=$1
 	local step=$2
 
-	pathStack[$step]+=" $coord"
+	echo "$coord" >> $STACK
 }
 
-shortestPath() {
+longestPath() {
 	local x
 	local y
 	local step=$1
@@ -202,24 +205,21 @@ shortestPath() {
 	local moved=0
 	local path="$2"
 	local arrived=""
+	local counter=0
 
-	if [ ${#pathStack[$step]} -eq 0 ]; then
-		echo "No more coords at step=$step"
-		return 1
-	fi
+	while [ $counter -lt $(wc -l < $STACK) ]; do
+		let counter++
+		read path x y <<<"$(sed -n "${counter}p" < $STACK | tr ',' ' ')"
+		step=$(wc -c <<<"$path")
 
-	let step++
+		computeDoors "$x" "$y" "$path"
 
-	# Stack from current step
-	for coord in ${pathStack[$((step-1))]}; do
-		read path x y <<<"$(echo $coord | tr ',' ' ')"
+		print $path $x $y ${pathToDoors["$path"]}
 
 		if hasArrived $x $y; then
 			echo "Ended (arrived) path: $path"
 			continue
 		fi
-
-		computeDoors "$x" "$y" "$path"
 
 		print "$path" "$x" "$y" ${pathToDoors["$path"]}
 
@@ -233,19 +233,14 @@ shortestPath() {
 		done
 	done
 
-	unset pathStack[$((step-1))]
-
-	if [ ${#arrived} -ne 0 ]; then
-		echo "Possible paths: $arrived" >&2
-		arrivedPaths=$arrived
-	fi
-
-	# Reenter on next step
-	shortestPath $step $shortest
+	echo "No more coords at step=$step"
 }
 
-toStack S,${start[0]},${start[1]} 0
+touch $STACK
+if [ $(wc -l < $STACK) -eq 0 ]; then
+	toStack S,${start[0]},${start[1]} 0
+fi
 
-shortestPath 0 "S"
-echo "Shortest: $?"
+longestPath
+echo "Longest: $arrived"
 print

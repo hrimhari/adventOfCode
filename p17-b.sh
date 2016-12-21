@@ -14,15 +14,16 @@ declare -a end=(7 7)
 # Path stack
 #   Value: list of coords in form of "PATH1,x1,y1\nPATH2,x2,y2 ...", where PATH is composed of a sequence of either U, L, D or R.
 STACK=/tmp/p17-b.${magic}.stack
+TMP=/tmp/p17-b.${magic}.tmp
+HIST=/tmp/p17-b.${magic}.history
+
+CURRENT=/tmp/p17-b.${magic}.current
 
 # Directions
 declare -A directions=([U]=0 [D]=1 [L]=2 [R]=3)
 
-# Path to doors
-declare -A pathToDoors=()
-
 # Latest paths leading to end
-declare arrivedPaths=""
+declare arrived=""
 
 width=8
 height=8
@@ -32,12 +33,12 @@ computeDoors() {
 	local y=$2
 	local path=${3:1}
 
-	if [ ${#pathToDoors[$3]} -gt 0 ]; then
+	if [ ${#doors} -gt 0 ]; then
 		# Already computed
 		return 0
 	fi
 
-	pathToDoors[$3]="$(echo -e "${magic}${path}\c" | $MD5 | sed -e "s/[0-9]/0/g" -e "s/[a-f]/1/g" -e "s/./& /g" | cut -c1-8)"
+	doors="$(echo -e "${magic}${path}\c" | $MD5 | sed -e "s/[0-9]/0/g" -e "s/[a-f]/1/g" -e "s/./& /g" | cut -c1-8)"
 }
 
 hasArrived() {
@@ -57,6 +58,7 @@ print() {
 	local y=$3
 	local -a doors=(${@:4})
 
+	if false; then # No need for visual for now
 	# Header
 	for ((ly=-${#width}; ly < 0; ly++)) {
 		printf "%3.3s" ""
@@ -99,8 +101,9 @@ print() {
 		}
 		echo
 	}
+	fi
 
-	echo -e "\n${width}x${height} step=$step coord=${x},${y} end=${end[*]}"
+	echo -e "\n${width}x${height} step=$step coord=${x},${y} end=${end[*]} counter=$counter left=$((stackCount - counter))"
 }
 
 directionToCoord() {
@@ -135,40 +138,35 @@ nextMove() {
 	local direction
 	local coord
 	local found=0
-	local attemptedList="${pathStack[$step]}"
 	
-	local -a doors=(${pathToDoors[$path]})
+	local -a doorArray=($doors)
 
-	local -A distances=()
 	local distance
 	local -A coords=()
 	local directionIndex
+	local attempted
+	local isValid
+
 	for direction in ${!directions[@]}; do
 		directionIndex=${directions[$direction]}
-		if [ ${doors[${directionIndex}]} -eq 0 ]; then
+		if [ ${doorArray[${directionIndex}]} -eq 0 ]; then
 			# Door closed
-			echo "Door closed: $direction" >&2
+			#echo "Door closed: $direction" >&2
 			continue
 		fi
 		coords[$direction]="$(directionToCoord $x $y $direction)"
-	done
-		
-	#declare -p doors >&2
-	#declare -p coords >&2
-	local isValid
-	for direction in ${!coords[@]}; do
 		coord="${coords[$direction]}"
 		isValidCoord $coord
 		isValid=$?
 		if [ $isValid -ne 0 ]; then
-			echo "Not valid: ${path}${direction}: $coord" >&2
+			#echo "Not valid: ${path}${direction}: $coord" >&2
 			continue
 		fi
 
 		attempted=$(grep --color=always "^${path}${direction}," $STACK)
 		if [ ${#attempted} -ne 0 ]; then
 			#echo "Attempted: ${path}${direction}: ${attempted}" >&2
-			echo "Attempted: ${path}${direction}" >&2
+			#echo "Attempted: ${path}${direction}" >&2
 			continue
 		fi
 
@@ -182,7 +180,7 @@ nextMove() {
 		nextDirection=$direction
 		return 0
 	else
-		echo "No coord chosen" >&2
+		#echo "No coord chosen" >&2
 		return 1
 	fi
 }
@@ -197,31 +195,41 @@ toStack() {
 longestPath() {
 	local x
 	local y
-	local step=$1
+	local step
 	local coord
 	local nextCoord
 	local nextDirection
 	local tempShortest=0
 	local moved=0
-	local path="$2"
-	local arrived=""
-	local counter=0
+	local path
+	local counter=${1:-0}
+	local counterSeek=0
+	local stackCount
+	local previousStep=0
+	local doors=""
 
-	while [ $counter -lt $(wc -l < $STACK) ]; do
+	exec 5<$STACK
+
+	while [ $((counterSeek++)) -lt $counter ]; do
+		((counterSeek % 100 == 1 ? 1 : 0)) && echo -e "\rSeeking to $counter... ($counterSeek)\c"
+		read -u 5 path
+	done
+
+	oldIFS="$IFS"
+	IFS=",$IFS"
+	while read -u 5 path x y; do
 		let counter++
-		read path x y <<<"$(sed -n "${counter}p" < $STACK | tr ',' ' ')"
+		echo $counter > $CURRENT
 		step=$(wc -c <<<"$path")
 
 		computeDoors "$x" "$y" "$path"
 
-		print $path $x $y ${pathToDoors["$path"]}
+		((counter % 10 == 0 ? 1 : 0)) && print $path $x $y ${doors}
 
 		if hasArrived $x $y; then
 			echo "Ended (arrived) path: $path"
 			continue
 		fi
-
-		print "$path" "$x" "$y" ${pathToDoors["$path"]}
 
 		while nextMove "$path" "$x" "$y" $step; do
 			if hasArrived $nextCoord; then
@@ -229,8 +237,9 @@ longestPath() {
 				#exit 0
 				arrived="$step:${path:1}${nextDirection}"
 			fi
-			toStack $(echo ${path}$nextDirection $nextCoord | tr ' ' ',') $step
+			toStack "$(echo ${path}$nextDirection $nextCoord | tr ' ' ',')" $step
 		done
+
 	done
 
 	echo "No more coords at step=$step"
@@ -238,9 +247,9 @@ longestPath() {
 
 touch $STACK
 if [ $(wc -l < $STACK) -eq 0 ]; then
-	toStack S,${start[0]},${start[1]} 0
+	toStack "S,${start[0]},${start[1]}" 0
 fi
 
-longestPath
+longestPath $2
 echo "Longest: $arrived"
 print

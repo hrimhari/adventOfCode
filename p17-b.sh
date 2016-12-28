@@ -1,5 +1,19 @@
 #!/bin/bash
 
+trap "killprocs; exit 1" 1 2 3 6 9 11
+
+killprocs() {
+	while [ "$(jobs)" != "" ]; do
+		kill %-
+	done
+	sleep 2
+	while [ "$(jobs)" != "" ]; do
+		kill -9 %-
+	done
+	rm -r $SEQFIFO
+}
+
+PROCS=2
 MD5=$(which md5 md5sum | head -1)
 
 magic=$1
@@ -16,6 +30,7 @@ declare -a end=(7 7)
 STACK=/tmp/p17-b.${magic}.stack
 TMP=/tmp/p17-b.${magic}.tmp
 HIST=/tmp/p17-b.${magic}.history
+SEQFIFO=/tmp/p17-b.${magic}.seqfifo
 
 CURRENT=/tmp/p17-b.${magic}.current
 
@@ -27,6 +42,18 @@ declare arrived=""
 
 width=8
 height=8
+
+seqGenerator() {
+	local start=$1
+	local multi=100000
+	local end=$((start+multi))
+
+	while true; do
+		echo "Generating $start to $end..."
+		seq $start $end >&10
+		((start=end + 1, end = start + multi))
+	done
+}
 
 computeDoors() {
 	local x=$1
@@ -51,7 +78,6 @@ print() {
 	local path=$1
 	local x=$2
 	local y=$3
-	local -a doors=(${@:4})
 
 	if false; then # No need for visual for now
 	# Header
@@ -98,7 +124,7 @@ print() {
 	}
 	fi
 
-	echo -e "\n${width}x${height} step=$step coord=${x},${y} end=${end[*]} counter=$counter left=$((stackCount=$(wc -l < $STACK) - counter)) tillNextStep=$((nextStepCounter - counter)) doors=${doors[*]}"
+	echo -e "\n$proc: ${width}x${height} step=$step coord=${x},${y} end=${end[*]} counter=$counter left=$((stackCount=$(wc -l < $STACK) - counter)) tillNextStep=$((nextStepCounter - counter)) doors=${doors}"
 }
 
 directionToCoord() {
@@ -129,12 +155,10 @@ nextMove() {
 	local y=$3
 	local step=$4
 
-	echo "Where to from $path,$x,$y step $step?"
+	echo "$proc: Where to from $path,$x,$y step $step?"
 	local direction
 	local coord
 	local found=0
-	
-	local -a doorArray=($doors)
 
 	local distance
 	local directionIndex
@@ -146,7 +170,7 @@ nextMove() {
 
 	for direction in ${!directions[@]}; do
 		directionIndex=${directions[$direction]}
-		if [ ${doorArray[${directionIndex}]} -eq 0 ]; then
+		if [ ${doors:$((directionIndex*2)):1} -eq 0 ]; then
 			# Door closed
 			#echo "Door closed: $direction" >&2
 			discarded+=" $direction:door" 
@@ -161,31 +185,31 @@ nextMove() {
 			continue
 		fi
 
-		if false; then # Shouldn't happen
-		attempted=$(grep --color=always "^${path}${direction}," $STACK)
-		if [ ${#attempted} -ne 0 ]; then
-			#echo "Attempted: ${path}${direction}: ${attempted}" >&2
-			echo "Attempted: ${path}${direction}" >&2
-			discarded+=" $direction:already" 
-			continue
-		fi
-		fi
+		# Shouldn't happen, expensive
+#		attempted=$(grep --color=always "^${path}${direction}," $STACK)
+#		if [ ${#attempted} -ne 0 ]; then
+#			#echo "Attempted: ${path}${direction}: ${attempted}" >&2
+#			echo "Attempted: ${path}${direction}" >&2
+#			discarded+=" $direction:already" 
+#			continue
+#		fi
 
 		found=1
-                if hasArrived $nextCoord; then
-                        echo "Arrived at $nextCoord in $step with path ${path:1}${nextDirection}"
-                        #exit 0
-                        arrived="$step:${path:1}${nextDirection}"
-                fi
+		# Done in main loop
+#                if hasArrived $nextCoord; then
+#                        echo "$proc: Arrived at $nextCoord in $step with path ${path:1}${nextDirection}"
+#                        #exit 0
+#                        arrived="$step:${path:1}${nextDirection}"
+#                fi
                 toStack "$(echo ${path}$direction $coord | tr ' ' ',')" $step
 		nextDirections+="$direction $coord"$'\n'
 	done
 
 	if [ $found -eq 1 ]; then
-		echo "Discarded: $discarded, Next directions chosen: "${nextDirections} >&2
+		echo "$proc: Discarded: $discarded, Next directions chosen: "${nextDirections} >&2
 		return 0
 	else
-		echo "No directions chosen. Discarded: $discarded" >&2
+		echo "$proc: No directions chosen. Discarded: $discarded" >&2
 		return 1
 	fi
 }
@@ -198,6 +222,7 @@ toStack() {
 }
 
 longestPath() {
+	local proc=$1
 	local x
 	local y
 	local step
@@ -208,30 +233,26 @@ longestPath() {
 	local tempShortest=0
 	local moved=0
 	local path
-	local counter=${1:-0}
 	local counterSeek=0
 	local nextStepCounter=0
 	local stackCount
 	local previousStep=0
+	local previousCounter
 	local doors=""
 
-	exec 5<$STACK
-
-	while [ $((counterSeek++)) -lt $counter ]; do
-		((counterSeek % 100 == 1 ? 1 : 0)) && echo -e "\rSeeking to $counter... ($counterSeek)\c"
-		read -u 5 path
-	done
 
 	nextStepCounter=$(egrep -n "^[SLDUR]{$((step+1)),$((step+1))}," $STACK | head -1 | cut -d: -f1)
 
 	oldIFS="$IFS"
 	IFS=",$IFS"
 	while read -u 5 path x y; do
-		let counter++
-		echo $counter > $CURRENT
+		read -u 10 counter
+		echo "${counter}P$(fgrep pos /proc/self/fdinfo/5 | cut -d\	 -f2)" > $CURRENT
+		#echo "${counter}P$(fgrep pos /proc/self/fdinfo/5 | cut -d\	  -f2)" > $CURRENT
+		#echo $counter > $CURRENT
 		step=$(wc -c <<<"$path")
 
-		if [ $previousStep -eq 0 ] || [ $step -ne $previousStep ]; then
+		if [ $step -ne $previousStep ]; then
 			previousStep=$step
 			stackCount=$(wc -l < $STACK)
 			nextStepCounter=$((previousStep != 0 || nextStepCounter == 0? $stackCount : nextStepCounter))
@@ -242,14 +263,16 @@ longestPath() {
 		((counter % 10 == 0 ? 1 : 0)) && print "$path" $x $y "${doors}"
 
 		if hasArrived $x $y; then
-			echo "Ended (arrived) path: $path"
+			echo "$proc: Ended (arrived) path: $path"
+			arrived="$step:$path"
 			continue
 		fi
 
 		nextMove "$path" "$x" "$y" $step
 	done
 
-	echo "No more coords at step=$step"
+	echo "$proc: No more coords at step=$step"
+	echo "$proc: Longest: $arrived"
 }
 
 touch $STACK
@@ -257,6 +280,40 @@ if [ $(wc -l < $STACK) -eq 0 ]; then
 	toStack "S,${start[0]},${start[1]}" 0
 fi
 
-longestPath $2
-echo "Longest: $arrived"
-print
+declare counter=$(cat $CURRENT | cut -dP -f1)
+counter=${counter:-0}
+declare position=$(cat $CURRENT | cut -s -dP -f2)
+
+exec 5<$STACK
+
+if [ "$position" != "" ]; then
+	echo -e "Calculating counter...\c"
+	echo " $counter"
+	echo "Seeking to position $position..."
+	dd of=/dev/null bs=$position count=1 <&5
+else
+	while [ $((counterSeek++)) -lt $counter ]; do
+		((counterSeek % 100 == 1 ? 1 : 0)) && echo -e "\rSeeking to $counter... ($counterSeek)\c"
+		read -u 5 path
+	done
+fi
+
+rm -f $SEQFIFO
+mkfifo 755 $SEQFIFO
+
+exec 10<>$SEQFIFO
+
+seqGenerator $counter & 
+
+for proc in $(seq 1 $PROCS); do
+	longestPath $((proc - 1)) &
+done
+
+while [ $(jobs | wc -l) -gt 1 ]; do
+	wait -n
+done
+
+killprocs
+
+echo "fgrep \"Longest:\" "
+

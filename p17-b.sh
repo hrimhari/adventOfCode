@@ -2,19 +2,21 @@
 
 trap "killprocs; exit 1" 1 2 3 6 9 11
 
+#
+# REQUIRES 'md5' BUILTIN to be on the same directory as this script.
+# See https://github.com/geirha/bash-builtins/blob/master/md5.c
+enable -f $(cd $(dirname "$0") && pwd)/md5 md5
+
 killprocs() {
 	while [ "$(jobs)" != "" ]; do
-		kill %-
+		echo "Kill %.."
+		kill -9 %
 	done
-	sleep 2
-	while [ "$(jobs)" != "" ]; do
-		kill -9 %-
-	done
-	rm -r $SEQFIFO
+	rm -f $SEQFIFO
 }
 
-PROCS=2
-MD5=$(which md5 md5sum | head -1)
+PROCS=${2:-1}
+#MD5=$(which md5 md5sum | head -1)
 
 magic=$1
 if [ "$1" = "-t" ]; then
@@ -31,11 +33,13 @@ STACK=/tmp/p17-b.${magic}.stack
 TMP=/tmp/p17-b.${magic}.tmp
 HIST=/tmp/p17-b.${magic}.history
 SEQFIFO=/tmp/p17-b.${magic}.seqfifo
+LOG=/tmp/p17-b.${magic}.log
 
 CURRENT=/tmp/p17-b.${magic}.current
 
 # Directions
 declare -A directions=([U]=0 [D]=1 [L]=2 [R]=3)
+declare -A directionToCoord=([U]="tempY=y-2,tempX=x" [D]="tempY=y+2,tempX=x" [L]="tempX=x-2,tempY=y" [R]="tempX=x+2,tempY=y")
 
 # Latest paths leading to end
 declare arrived=""
@@ -60,7 +64,12 @@ computeDoors() {
 	local y=$2
 	local path=${3:1}
 
-	doors="$(echo -e "${magic}${path}\c" | $MD5 | sed -e "s/[0-9]/0/g" -e "s/[a-f]/1/g" -e "s/./& /g" | cut -c1-8)"
+	#doors="$(echo -e "${magic}${path}\c" | $MD5 | sed -e "s/[0-9]/0/g" -e "s/[a-f]/1/g" -e "s/./& /g" | cut -c1-8)"
+	md5 "${magic}${path}"
+	#doors=$(sed -e "s/[0-9]/0/g" -e "s/[a-f]/1/g" -e "s/./& /g" -e "s/^\(.\{8,8\}\).*$/\1/" <<<"$REPLY")
+	doors=${REPLY//[0-9]/0 }
+	doors=${doors//[a-f]/1 }
+	doors=${doors:0:8}
 }
 
 hasArrived() {
@@ -71,8 +80,6 @@ hasArrived() {
 }
 
 print() {
-	echo
-
 	local lx
 	local ly
 	local path=$1
@@ -124,23 +131,23 @@ print() {
 	}
 	fi
 
-	echo -e "\n$proc: ${width}x${height} step=$step coord=${x},${y} end=${end[*]} counter=$counter left=$((stackCount=$(wc -l < $STACK) - counter)) tillNextStep=$((nextStepCounter - counter)) doors=${doors}"
+	echo "$proc: ${width}x${height} step=$step coord=${x},${y} end=${end[*]} counter=$counter left=$((stackCount - counter)) tillNextStep=$((nextStepCounter - counter)) doors=${doors}"
 }
 
-directionToCoord() {
-	local x=$1
-	local y=$2
-	local direction=$3
-
-	case "$direction" in
-		"D") let "y+=2";;
-		"R") let "x+=2";;
-		"U") let "y-=2";;
-		"L") let "x-=2";;
-	esac
-
-	echo "$x $y"
-}
+#directionToCoord() {
+#	local x=$1
+#	local y=$2
+#	local direction=$3
+#
+#	case "$direction" in
+#		"D") let "y+=2";;
+#		"R") let "x+=2";;
+#		"U") let "y-=2";;
+#		"L") let "x-=2";;
+#	esac
+#
+#	echo "$x $y"
+#}
 
 isValidCoord() {
 	local x=$1
@@ -153,9 +160,11 @@ nextMove() {
 	local path=$1
 	local x=$2
 	local y=$3
+	local tempX=0
+	local tempY=0
 	local step=$4
 
-	echo "$proc: Where to from $path,$x,$y step $step?"
+	echo "$proc: Where to from $path,$x,$y step $step?" >> $LOG
 	local direction
 	local coord
 	local found=0
@@ -170,20 +179,25 @@ nextMove() {
 
 	for direction in ${!directions[@]}; do
 		directionIndex=${directions[$direction]}
-		if [ ${doors:$((directionIndex*2)):1} -eq 0 ]; then
-			# Door closed
-			#echo "Door closed: $direction" >&2
-			discarded+=" $direction:door" 
-			continue
-		fi
-		coord="$(directionToCoord $x $y $direction)"
-		isValidCoord $coord
-		isValid=$?
-		if [ $isValid -ne 0 ]; then
-			#echo "Not valid: ${path}${direction}: $coord" >&2
-			discarded+=" $direction:invalid" 
-			continue
-		fi
+#		if [ ${doors:$((directionIndex*2)):1} -eq 0 ]; then
+#			# Door closed
+#			#echo "Door closed: $direction" >&2
+#			discarded+=" $direction:door" 
+#			continue
+#		fi
+		((${doors:$((directionIndex*2)):1} == 0)) && { discarded+=" $direction:door"; continue; }
+
+		#coord="$(directionToCoord $x $y $direction)"
+		((${directionToCoord[$direction]}))
+		coord="$tempX $tempY"
+
+#		if ! isValidCoord $coord; then
+#			#echo "Not valid: ${path}${direction}: $coord" >&2
+#			discarded+=" $direction:invalid" 
+#			continue
+#		fi
+
+		! isValidCoord $coord && { discarded+=" $direction:invalid"; continue; }
 
 		# Shouldn't happen, expensive
 #		attempted=$(grep --color=always "^${path}${direction}," $STACK)
@@ -205,20 +219,22 @@ nextMove() {
 		nextDirections+="$direction $coord"$'\n'
 	done
 
-	if [ $found -eq 1 ]; then
-		echo "$proc: Discarded: $discarded, Next directions chosen: "${nextDirections} >&2
-		return 0
-	else
-		echo "$proc: No directions chosen. Discarded: $discarded" >&2
-		return 1
-	fi
+	case "$found" in
+		1)
+			echo "$proc: Discarded: $discarded, Next directions chosen: "${nextDirections} >> $LOG
+			return 0
+			;;
+	esac
+	echo "$proc: No directions chosen. Discarded: $discarded" >> $LOG
+	return 1
 }
 
 toStack() {
 	local coord=$1
 	local step=$2
 
-	echo "$coord" >> $STACK
+	let stackCount++
+	flock $STACK -c "stdbuf -o0 echo \"$coord\" >> ${STACK}"
 }
 
 longestPath() {
@@ -240,33 +256,50 @@ longestPath() {
 	local previousCounter
 	local doors=""
 
+	nextStepCounter=$(egrep -n "^[SLRDU]{$((step+1)),$((step+1))}," $STACK | head -1 | cut -d: -f1)
 
-	nextStepCounter=$(egrep -n "^[SLDUR]{$((step+1)),$((step+1))}," $STACK | head -1 | cut -d: -f1)
+	exec {stacklock}<$STACK
+	exec {counterlock}<$CURRENT
+
+	echo "$proc: lock descriptors: stack=$stacklock counter=$counterlock"
 
 	oldIFS="$IFS"
 	IFS=",$IFS"
-	while read -u 5 path x y; do
+	while { flock $stacklock; read -u 5 path x y; flock -u $stacklock; [ ${#path} -gt 0 ]; } do
+		flock $counterlock
 		read -u 10 counter
 		echo "${counter}P$(fgrep pos /proc/self/fdinfo/5 | cut -d\	 -f2)" > $CURRENT
+		flock -u $counterlock
 		#echo "${counter}P$(fgrep pos /proc/self/fdinfo/5 | cut -d\	  -f2)" > $CURRENT
 		#echo $counter > $CURRENT
-		step=$(wc -c <<<"$path")
+		step=${#path}
 
-		if [ $step -ne $previousStep ]; then
-			previousStep=$step
-			stackCount=$(wc -l < $STACK)
-			nextStepCounter=$((previousStep != 0 || nextStepCounter == 0? $stackCount : nextStepCounter))
-		fi
+#		if [ $step -ne $previousStep ]; then
+#			previousStep=$step
+#			stackCount=$(wc -l < $STACK)
+#			nextStepCounter=$((previousStep != 0 || nextStepCounter == 0? $stackCount : nextStepCounter))
+#		fi
+		case "$step" in
+			$previousStep)
+				;;
+			*)
+				stackCount=$(wc -l < $STACK)
+				previousStep=$step
+				nextStepCounter=$(egrep -n "^[SLRDU]{$((step+1)),$((step+1))}," $STACK | head -1 | cut -d: -f1)
+				nextStepCounter=${nextStepCounter:-$stackCount}
+				;;
+		esac
 
 		computeDoors "$x" "$y" "$path"
 
-		((counter % 10 == 0 ? 1 : 0)) && print "$path" $x $y "${doors}"
+		((counter % 10 == 0)) && print "$path" $x $y "${doors}"
 
-		if hasArrived $x $y; then
-			echo "$proc: Ended (arrived) path: $path"
-			arrived="$step:$path"
-			continue
-		fi
+#		if hasArrived $x $y; then
+#			echo "$proc: Ended (arrived) path: $path"
+#			arrived="$step:$path"
+#			continue
+#		fi
+		hasArrived $x $y && { echo "$proc: Ended (arrived) path: $path"; arrived="$step:$path"; continue; }
 
 		nextMove "$path" "$x" "$y" $step
 	done
@@ -275,7 +308,7 @@ longestPath() {
 	echo "$proc: Longest: $arrived"
 }
 
-touch $STACK
+touch $STACK $CURRENT
 if [ $(wc -l < $STACK) -eq 0 ]; then
 	toStack "S,${start[0]},${start[1]}" 0
 fi
@@ -284,7 +317,7 @@ declare counter=$(cat $CURRENT | cut -dP -f1)
 counter=${counter:-0}
 declare position=$(cat $CURRENT | cut -s -dP -f2)
 
-exec 5<$STACK
+exec 5<>$STACK
 
 if [ "$position" != "" ]; then
 	echo -e "Calculating counter...\c"
@@ -299,7 +332,7 @@ else
 fi
 
 rm -f $SEQFIFO
-mkfifo 755 $SEQFIFO
+mkfifo $SEQFIFO
 
 exec 10<>$SEQFIFO
 
@@ -307,6 +340,7 @@ seqGenerator $counter &
 
 for proc in $(seq 1 $PROCS); do
 	longestPath $((proc - 1)) &
+	sleep 5
 done
 
 while [ $(jobs | wc -l) -gt 1 ]; do

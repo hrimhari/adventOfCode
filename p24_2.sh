@@ -92,7 +92,7 @@ print() {
 	local x=$2
 	local y=$3
 
-	echo -e "$proc: ${width}x${height} step=$step coord=${x},${y} end=${end[*]} counter=$counter left=$((stackCount=$(wc -l < $STACK) - counter)) tillNextStep=$((nextStepCounter - counter)) visited=$visited highestVisitedCount=$highestVisited}"
+	echo -e "$proc: ${width}x${height} step=$step coord=${x},${y} end=${end[*]} counter=$counter left=$((stackCount=$(wc -l < $HIST) - counter)) tillNextStep=$((nextStepCounter - counter)) visited=$visited highestVisitedCount=$highestVisited}"
 }
 
 printPath() {
@@ -128,7 +128,7 @@ printPath() {
 				if [ $pos -gt 0 ]; then
 					tmpMaze=${myMaze:0:$pos}
 				fi
-				tmpMaze+="a${myMaze:$((pos+1))}"
+				tmpMaze+="${marker}${myMaze:$((pos+1))}"
 				;;
 			"#")
 				errors+="$x,$y: wall!"$'\n'
@@ -299,7 +299,7 @@ shortestPath() {
 			$previousStep)
 				;;
 			*)
-				stackCount=$(wc -l < $STACK)
+				stackCount=$(wc -l < $HIST)
 				previousStep=$step
 				nextStepCounter=$(egrep -n "^[SLRDU]{$((step+1)),$((step+1))}," $STACK | head -1 | cut -d: -f1)
 				nextStepCounter=${nextStepCounter:-$stackCount}
@@ -350,8 +350,11 @@ spawn() {
 	$*
 }
 
+printPath "UULLUUUURRUUDDLLDDDDRRDDDDRRRRDDRRRRDDDDRRRRDDDDRRRRUURRRRDDRRUURRUULLUUDDRRDDLLDDLLUULLLLDDLLLLUULLLLLLDDDDLLLLLLLLLLUULLLLDDDDRRLLUUUURRRRUULLLLLLUULLLLUULLLLDDDDDDDDDDLLDDDDRRRRDDLLDDRRRRUURRDDUULLDDLLLLUURRUULLLLLLLLLLLLUULLLLLLDDLLLLLLLLUULLUULLLLLLLLLLLLUULLUULLDDLLUUUULLLLLLLLDDLLLLDDLLUULLUULLUULLLLDDLLLLLLLLUULLLLLLDDLLLLLLUULLLLLLLLLLDDLLDDLLLLLLDDDDUURRUURRUUUULLLLLLDDDDLLLLLLLLLLLLUUUUUULLLLUUUULLLLLLLLDDDDRRDDRRUUUUUURRUUUURRUURRUUUURRUULLLLLLDDDD"
+exit
+
 touch $STACK $CURRENT $HVISITED
-if [ $(wc -l < $STACK) -eq 0 ]; then
+if [ $(wc -l < $HIST) -eq 0 ]; then
 	toStack "S,${start[0]},${start[1]}," 0
 fi
 
@@ -389,7 +392,10 @@ for proc in $(seq 1 $PROCS); do
 done
 
 while [ $(jobs | wc -l) -gt 1 ]; do
-	wait -n
+	if wait -n; then
+		# Somebody arrived
+		break
+	fi
 done
 
 killprocs

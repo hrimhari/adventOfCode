@@ -66,7 +66,7 @@ computeDoors() {
 
 	#doors="$(echo -e "${magic}${path}\c" | $MD5 | sed -e "s/[0-9]/0/g" -e "s/[a-f]/1/g" -e "s/./& /g" | cut -c1-8)"
 	md5 "${magic}${path}"
-	#doors=$(sed -e "s/[0-9]/0/g" -e "s/[a-f]/1/g" -e "s/./& /g" -e "s/^\(.\{8,8\}\).*$/\1/" <<<"$REPLY")
+	#doors=$(sed -e "s/[0-9]a/0/g" -e "s/[b-f]/1/g" -e "s/./& /g" -e "s/^\(.\{8,8\}\).*$/\1/" <<<"$REPLY")
 	doors=${REPLY//[0-9]/0 }
 	doors=${doors//[a-f]/1 }
 	doors=${doors:0:8}

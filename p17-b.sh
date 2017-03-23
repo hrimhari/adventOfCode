@@ -67,8 +67,8 @@ computeDoors() {
 	#doors="$(echo -e "${magic}${path}\c" | $MD5 | sed -e "s/[0-9]/0/g" -e "s/[a-f]/1/g" -e "s/./& /g" | cut -c1-8)"
 	md5 "${magic}${path}"
 	#doors=$(sed -e "s/[0-9]a/0/g" -e "s/[b-f]/1/g" -e "s/./& /g" -e "s/^\(.\{8,8\}\).*$/\1/" <<<"$REPLY")
-	doors=${REPLY//[0-9]/0 }
-	doors=${doors//[a-f]/1 }
+	doors=${REPLY//[0-9a]/0 }
+	doors=${doors//[b-f]/1 }
 	doors=${doors:0:8}
 }
 
@@ -233,7 +233,7 @@ toStack() {
 	local coord=$1
 	local step=$2
 
-	let stackCount++
+	let stackCount+=3
 	flock $STACK -c "stdbuf -o0 echo \"$coord\" >> ${STACK}"
 }
 
@@ -257,6 +257,7 @@ longestPath() {
 	local doors=""
 
 	nextStepCounter=$(egrep -n "^[SLRDU]{$((step+1)),$((step+1))}," $STACK | head -1 | cut -d: -f1)
+	stackCount=$(wc -l < $STACK)
 
 	exec {stacklock}<$STACK
 	exec {counterlock}<$CURRENT

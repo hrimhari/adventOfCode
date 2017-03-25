@@ -33,6 +33,39 @@ HISTORY=/tmp/p22.history
 # Structure: x1,y1:usedAmount x2,y2:usedAmount ...
 USEDHISTORY=/tmp/p22.usedhistory
 
+print() {
+	local x
+	local y
+	local pre=""
+	local pos=""
+
+	for ((y = 0; y < height; y++)) {
+		for ((x = 0; x < width; x++)) {
+			[ $x -gt 0 ] && printf " - "
+			case "$x $y" in
+				"$end")
+					pre="(";pos=")"
+					;;
+				"$dataLocation")
+					pre="[";pos="]"
+					;;
+				*)
+					pre=" ";pos=" "
+					;;
+			esac
+			printf "${pre}%3s/%3s${pos}" ${nodeUsedInfo["$x $y"]} ${nodeAvailInfo["$x $y"]}
+		}
+		echo
+		if [ $y -lt $((height - 1)) ]; then
+			for ((x = 0; x < width; x++)) {
+				[ $x -gt 0 ] && printf "   "
+				printf " %3s|%3s " ""
+			}
+			echo
+		fi
+	}
+}
+
 readNodes() {
 	local usedSize
 	local availSize
@@ -58,6 +91,8 @@ readNodes() {
 		fi
 	done <<<"$(tail -n +3 $NODES | tr -s ' ' | tr -d 'T')"
 	echo
+
+	dataLocation="$((width - 1)) 0"
 }
 
 hasArrived() {
@@ -127,7 +162,7 @@ loadStates() {
 			exit 1
 		fi
 
-		historyStateCache="$(echo "$cmd" | sed "s/declare -A/declare -Ag/g")"
+		historyStateCache="$(echo "$cmd" | sed "s/-A/-Ag/g;s/--/-g/g")"
 	elif [ $index -lt $historyCounter ]; then
 		echo "ERROR! Cannot load $index < $historyCounter"
 		exit 1
@@ -137,6 +172,7 @@ loadStates() {
 
 	unset nodeAvailInfo
 	unset nodeUsedInfo
+	unset dataLocation
 	eval $historyStateCache
 	echo "Loaded history $index"
 }
@@ -148,6 +184,11 @@ doMove() {
 	echo "Move from: ($fromCoord)=${nodeUsedInfo[$fromCoord]}/${nodeAvailInfo[$fromCoord]}, ($x $y)=${nodeUsedInfo[$toCoord]}/${nodeAvailInfo[$toCoord]}"
 	let "nodeAvailInfo[$fromCoord]+=nodeUsedInfo[$fromCoord], nodeAvailInfo[$toCoord]-=nodeUsedInfo[$fromCoord], nodeUsedInfo[$toCoord]=nodeUsedInfo[$fromCoord], nodeUsedInfo[$fromCoord]=0"
 	echo "To: ($fromCoord)=${nodeUsedInfo[$fromCoord]}/${nodeAvailInfo[$fromCoord]}, ($toCoord)=${nodeUsedInfo[$toCoord]}/${nodeAvailInfo[$toCoord]}"
+	if [ "$fromCoord" = "$dataLocation" ]; then
+		dataLocation="$toCoord"
+		echo "New location: ($dataLocation)"
+	fi
+	#print
 }
 
 nextMove() {
@@ -169,19 +210,19 @@ nextMove() {
 	local toTime
 
 	for coord in "$((x-1)) $y" "$((x+1)) $y" "$x $((y - 1))" "$x $((y + 1))"; do
-		fromTime=$(date +%s%N)
+		[ $TIME -ne 0 ] && ((fromTime=$(date +%s%N)))
 		if ! isValidMove $coord $x $y; then
-			toTime=$(date +%s%N)
+			[ $TIME -ne 0 ] && ((toTime=$(date +%s%N)))
 			[ $TIME -ne 0 ] && echo "isValidMove: $(((toTime - fromTime) / 1000000))"
 			continue
 		fi
-		toTime=$(date +%s%N)
+		[ $TIME -ne 0 ] && ((toTime=$(date +%s%N)))
 		[ $TIME -ne 0 ] && echo "isValidMove: $(((toTime - fromTime) / 1000000))"
 
 		found=1
-		fromTime=$(date +%s%N)
+		[ $TIME -ne 0 ] && ((fromTime=$(date +%s%N)))
 		toStack "$path" "$coord"
-		toTime=$(date +%s%N)
+		[ $TIME -ne 0 ] && ((toTime=$(date +%s%N)))
 		[ $TIME -ne 0 ] && echo "toStack: $(((toTime - fromTime) / 1000000))"
 		coords+="($coord)"$'\n'
 	done
@@ -218,7 +259,7 @@ gotStates() {
 
 logStates() {
 	let "historyLines++"
-	(declare -p nodeUsedInfo; declare -p nodeAvailInfo) | tr '\n' ';' >> $HISTORY
+	(declare -p dataLocation;declare -p nodeUsedInfo; declare -p nodeAvailInfo) | tr '\n' ';' >> $HISTORY
 	usedStates >> $USEDHISTORY
 	echo >> $HISTORY
 }
@@ -294,20 +335,20 @@ shortestPath() {
 		fromX=$5
 		fromY=$6
 
-		toTime=$(date +%s%N)
+		[ $TIME -ne 0 ] && ((toTime=$(date +%s%N)))
 		[ $TIME -ne 0 ] && echo "Preamble: $(( (toTime - fromTime) / 1000000))"
 
 		if [ "$historyLine" != "0" ]; then
-			fromTime=$(date +%s%N)
+			[ $TIME -ne 0 ] && ((fromTime=$(date +%s%N)))
 			loadStates $historyLine
-			toTime=$(date +%s%N)
+			[ $TIME -ne 0 ] && ((toTime=$(date +%s%N)))
 			[ $TIME -ne 0 ] && echo "loadStats: $(( (toTime - fromTime) / 1000000))"
 		fi
 
 		if [ "$x" != "''" ]; then
-			fromTime=$(date +%s%N)
+			[ $TIME -ne 0 ] && ((fromTime=$(date +%s%N)))
 			doMove "$fromX $fromY" "$x $y"
-			toTime=$(date +%s%N)
+			[ $TIME -ne 0 ] && ((toTime=$(date +%s%N)))
 			[ $TIME -ne 0 ] && echo "doMove: $(( (toTime - fromTime) / 1000000))"
 			moved=1
 		else
@@ -328,14 +369,14 @@ shortestPath() {
 			exit 0
 		fi
 
-		fromTime=$(date +%s%N)
+		[ $TIME -ne 0 ] && ((fromTime=$(date +%s%N)))
 		logStates
-		toTime=$(date +%s%N)
+		[ $TIME -ne 0 ] && ((toTime=$(date +%s%N)))
 		[ $TIME -ne 0 ] && echo "logStates: $(( (toTime - fromTime) / 1000000))"
 
-		fromTime=$(date +%s%N)
+		[ $TIME -ne 0 ] && ((fromTime=$(date +%s%N)))
 		nextMove $step "$path" $coord
-		toTime=$(date +%s%N)
+		[ $TIME -ne 0 ] && ((toTime=$(date +%s%N)))
 		[ $TIME -ne 0 ] && echo "nextMove: $(( (toTime - fromTime) / 1000000))"
 	done
 }

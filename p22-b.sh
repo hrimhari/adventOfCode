@@ -93,6 +93,8 @@ readNodes() {
 	echo
 
 	dataLocation="$((width - 1)) 0"
+	#print > /tmp/p22.map
+	#exit
 }
 
 hasArrived() {
@@ -154,7 +156,7 @@ loadStates() {
 	if [ $index -gt $historyCounter ]; then
 		while [ $historyCounter -lt $index ] && read -u 6 cmd; do
 			let historyCounter++
-			echo -e "\rSkipping history to $index($historyCounter)...\c"
+			#echo -e "\rSkipping history to $index($historyCounter)...\c"
 		done
 
 		if [ "$cmd" = "" ]; then
@@ -167,14 +169,15 @@ loadStates() {
 		echo "ERROR! Cannot load $index < $historyCounter"
 		exit 1
 	else
-		echo "Already have state $index in cache"
+		:
+		#echo "Already have state $index in cache"
 	fi
 
 	unset nodeAvailInfo
 	unset nodeUsedInfo
 	unset dataLocation
 	eval $historyStateCache
-	echo "Loaded history $index"
+	#echo "Loaded history $index"
 }
 
 # Move data
@@ -197,7 +200,7 @@ nextMove() {
 	local x=$3
 	local y=$4
 
-	echo "Where to from '$path($x,$y)' step $step?"
+	#echo "Where to from '$path($x,$y)' step $step?"
 	local direction
 	local coord
 	local found=0
@@ -228,7 +231,7 @@ nextMove() {
 	done
 
 	if [ $found -eq 1 ]; then
-		echo "Next coords chosen: $coords" >&2
+		echo "Next coords chosen: " $coords >&2
 		return 0
 	else
 		echo "No coord chosen" >&2
@@ -246,14 +249,15 @@ toStack() {
 }
 
 usedStates() {
-      declare -p nodeUsedInfo | tr -d '"' | cut -d\( -f2- | cut -d\) -f1 | sed "s/\[\([0-9]*\) \([0-9]*\)\]=\([0-9]*\) /\1,\2:\3 /g" | tr ' ' '\n' | sort | cut -d: -f2 | tr '\n' ' '
-      echo
+	printf "$dataLocation:"
+	declare -p nodeAvailInfo | tr -d '"' | cut -d\( -f2- | cut -d\) -f1 | sed "s/\[\([0-9]*\) \([0-9]*\)\]=\([0-9]*\) /\1,\2:\3 /g" | tr ' ' '\n' | sort | cut -d: -f2 | tr '\n' ' '
+	echo
 }
 
 gotStates() {
 	local coord=$1
 
-	echo "$path" | fgrep -q ":$coord:" && fgrep -q "$(usedStates)" $USEDHISTORY
+	fgrep -q "$(usedStates)" $USEDHISTORY
 	return $?
 }
 
@@ -356,7 +360,7 @@ shortestPath() {
 			logStates
 		fi
 
-		echo "counter='$counter' step='$step' history='$historyLine' path='$path' fromXY='$fromX','$fromY' xy='$x','$y'"
+		echo "counter='$counter' step='$step' history='$historyLine' data='($dataLocation)' path='$path' fromXY='$fromX','$fromY' xy='$x','$y'"
 		coord="$fromX $fromY"
 
 		if [ $moved -eq 1 ] && gotStates "$fromX,$fromY"; then

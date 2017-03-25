@@ -1,6 +1,8 @@
 #!/bin/bash
 
-NODES=/tmp/p22.0.cleaned
+ulimit -v 5000000
+NODES=./p22.txt
+
 TIME=0
 
 declare start=""
@@ -54,7 +56,7 @@ readNodes() {
 		if [ $usedSize -eq 0 ]; then
 			start="$x $y"
 		fi
-	done < $NODES
+	done <<<"$(tail -n +3 $NODES | tr -s ' ' | tr -d 'T')"
 	echo
 }
 
@@ -196,21 +198,28 @@ nextMove() {
 toStack() {
 	local path="$1"
 	local coord="$2"
-	local historyLine="$((historyLines++))"
+	local historyLine=$historyLines
 
 	echo "${historyLine}:${path}:$(echo $coord | tr ' ' ',')" >> $STACK
-	echo "${historyLine}:${path}:$(echo $coord | tr ' ' ',')" >> $NEXT
+	#echo "${historyLine}:${path}:$(echo $coord | tr ' ' ',')" >> $NEXT
+}
+
+usedStates() {
+      declare -p nodeUsedInfo | tr -d '"' | cut -d\( -f2- | cut -d\) -f1 | sed "s/\[\([0-9]*\) \([0-9]*\)\]=\([0-9]*\) /\1,\2:\3 /g" | tr ' ' '\n' | sort | cut -d: -f2 | tr '\n' ' '
+      echo
 }
 
 gotStates() {
 	local coord=$1
-	echo "$path" | fgrep -q ":$coord:" && fgrep -q "$(declare -p nodeUsedInfo | tr -d '"' | cut -d\( -f2- | cut -d\) -f1 | sed "s/\[\([0-9]*\) \([0-9]*\)\]=\([0-9]*\) /\1,\2:\3 /g")" $USEDHISTORY
+
+	echo "$path" | fgrep -q ":$coord:" && fgrep -q "$(usedStates)" $USEDHISTORY
 	return $?
 }
 
 logStates() {
+	let "historyLines++"
 	(declare -p nodeUsedInfo; declare -p nodeAvailInfo) | tr '\n' ';' >> $HISTORY
-	declare -p nodeUsedInfo | tr -d '"' | cut -d\( -f2- | cut -d\) -f1 | sed "s/\[\([0-9]*\) \([0-9]*\)\]=\([0-9]*\) /\1,\2:\3 /g" >> $USEDHISTORY
+	usedStates >> $USEDHISTORY
 	echo >> $HISTORY
 }
 

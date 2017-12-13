@@ -1,4 +1,5 @@
 ```
+  $ for d in {1..9};do f=test-${d}.txt;echo "$f";cat $f; node 2.js $f;echo "---";done
   test-1.txt
   ne,ne,ne
    /    \    /    \    /
@@ -186,4 +187,5 @@
   Shortest: 5
   Longest: 5
   ---
+  $
 ```

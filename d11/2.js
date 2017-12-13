@@ -139,7 +139,7 @@ const formatPos = function(x, y, grid) {
 	let value = ''
 
 	if (grid.pos.x === x && grid.pos.y === y) {
-		value = 'P'
+		value = 'E'
 	} else if (grid.origin.x === x && grid.origin.y === y) {
 		value = 'S'
 	} else if (grid[y][x] && grid[y][x].length > 0) {
@@ -155,11 +155,11 @@ const printEven = function(grid, y) {
 	for (var x = 0; x < grid[y].length;x+=2) {
 		process.stdout.write(' /    \\   ') 
 	}
-	process.stdout.write('\n')
+	process.stdout.write(' /\n')
 	for (var x = 0; x < grid[y].length;x+=2) {
 		process.stdout.write(`+ ${formatPos(x, y, grid)} +--`)
 	}
-	process.stdout.write('\n')
+	process.stdout.write('+\n')
 }
 
 const printOdd = function(grid, y) {
@@ -167,11 +167,22 @@ const printOdd = function(grid, y) {
 	for (var x = 1; x < grid[y].length;x+=2) {
 		process.stdout.write(' /    \\   ') 
 	}
-	process.stdout.write('\n  +--')
+	process.stdout.write(' /\n  +--')
 	for (var x = 1; x < grid[y].length;x+=2) {
 		process.stdout.write(`+ ${formatPos(x, y, grid)} +--`)
 	}
-	process.stdout.write('\n')
+	process.stdout.write('+\n')
+	if (y + 1 == grid.length) {
+		process.stdout.write('     ')
+		for (var x = 1; x < grid[y].length; x+=2) {
+			process.stdout.write(' \\    /   ')
+		}
+		process.stdout.write('\n     ')
+		for (var x = 1; x < grid[y].length; x+=2) {
+			process.stdout.write('  +--+    ')
+		}
+		process.stdout.write('\n')
+	}
 }
 
 

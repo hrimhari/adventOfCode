@@ -120,7 +120,7 @@ const s = function(grid) {
 
 	
 const walk = function(step, grid, skipTracking) {
-	skipTracking !== true && (grid.stepNo = (grid.stepNo || 0) + 1)
+	skipTracking !== true && (grid.stepNo++)
 	//console.log(`${grid.stepNo}: ${step}(${grid.pos.x},${grid.pos.y})(${grid.origin.x},${grid.origin.y}): ${skipTracking && 'skip tracking' || ''}`)
 	eval(`${step}(grid)`)
 	skipTracking !== true && setStep(grid)
@@ -130,23 +130,26 @@ const processPath = function(steps, grid) {
 	grid.pos = {x:0, y:0}
 	grid.posSave = Object.assign({}, grid.pos)
 	grid.origin = Object.assign({}, grid.pos)
+	grid.stepNo = 0
 	setStep(grid)
 
 	steps.forEach(step => walk(step, grid))
 }
 
 const formatPos = function(x, y, grid) {
-	let value = ''
+	let value = []
 
+	if (grid.origin.x === x && grid.origin.y === y) {
+		value.push('S')
+	}
+	if (grid[y][x] && grid[y][x].length > 0) {
+		value.push(...grid[y][x])
+	}
 	if (grid.pos.x === x && grid.pos.y === y) {
-		value = 'E'
-	} else if (grid.origin.x === x && grid.origin.y === y) {
-		value = 'S'
-	} else if (grid[y][x] && grid[y][x].length > 0) {
-		value = '' + grid[y][x][grid[y][x].length - 1]
+		value.push('E')
 	}
 
-	value = value.padStart(3, ' ').padEnd(4, ' ')
+	value = value.join(',').padStart(3, ' ').padEnd(4, ' ').replace(/^(.).{3,}(.)$/, '$1..$2')
 
 	return value
 }
